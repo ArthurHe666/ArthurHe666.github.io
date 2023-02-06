@@ -97,7 +97,69 @@
     
     <div class="e-content article-entry" itemprop="articleBody">
       
-        
+        <h1 id="浅谈paxos算法"><a href="#浅谈paxos算法" class="headerlink" title="浅谈paxos算法"></a>浅谈paxos算法</h1><h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>​    在分布式系统中，无法同时满足数据高一致性和高可用，所以为了满足在节点异常的场景下，数据读写的一致性，提出了数据一致性算法paxos</p>
+<h2 id="定义"><a href="#定义" class="headerlink" title="定义"></a>定义</h2><p>​    paxos算法需要解决的问题就是<code>分布式系统如何就某个值达成一致</code></p>
+<h2 id="特点"><a href="#特点" class="headerlink" title="特点"></a>特点</h2><p>​    paxos算法是一种投票算法，在允许宕机故障的分布式系统中，它利用投票机制保证了2F+1个节点的容错能力，即2F+1个节点的系统最多允许F个节点同时出现故障    </p>
+<p>​    paxos没有解决<code>同时满足数据高一致性和高可用</code>这个问题，只是在数据高一致性和高可用之间取得了更好的平衡，即故障场景下，从内部看，某些节点的数据可能是落后的，但是上层应用可以访问到强一致性的数据</p>
+<h2 id="原理"><a href="#原理" class="headerlink" title="原理"></a>原理</h2><p>Paxos将系统中的角色分为提议者 (Proposer)，决策者 (Acceptor)，和最终决策学习者 (Learner)</p>
+<p><strong>Proposer</strong> ： 发起提案(proposal)</p>
+<p><strong>Acceptor</strong> ： 对提案进行投票(同意/拒绝)</p>
+<p><strong>Learner</strong> ： 不参与提案流程，同步达成一致的提案 (Proposer)</p>
+<p><strong>proposal</strong> ： 提案，由提案编号N和提案内容value组成(N， value)</p>
+<p>Paxos算法通过一个提案分为两个阶段，如图所示：</p>
+<p><img src="D:\workspace\03.blog\blog图片\image-20230206163107168.png" alt="image-20230206163107168"></p>
+<h3 id="prepare阶段"><a href="#prepare阶段" class="headerlink" title="prepare阶段"></a>prepare阶段</h3><p><strong>Proposer</strong>  : <strong>Proposer</strong>发起提案<strong>proposal</strong>，<strong>proposal</strong>中只用携带提案编号N，向所有的<strong>Acceptor</strong>广播prepare请求。</p>
+<p><strong>Acceptor</strong> ： 接收提案<strong>proposal</strong>，进行<strong>promise</strong>流程；</p>
+<p>​        如果当前prepare请求的提案编号N大于<strong>Acceptor</strong>之前接收到的所有的提案编号<code>minProposal</code>，就接收该提案，<code>minProposal = N</code>，并承诺不在接收比提案编号N小的提案，如果存在已经同意的提案(acceptedProposal, acceptedValue)，则返回(acceptedProposal, acceptedValue)给<strong>Proposer</strong> ，如果不存在已经同意的提案，则返回(NULL, NULL)给<strong>Proposer</strong> </p>
+<p>​        如果当前的prepare请求的提案编号N小于已经收到的提案<code>minProposal</code>，则拒绝，返回当前接收的提案(acceptedProposal, acceptedValue)给<strong>Proposer</strong>，如果不存在已经同意的提案，则返回(NULL, NULL)给<strong>Proposer</strong> </p>
+<p><strong>Proposer</strong> ： 接收到大多数的<strong>Acceptor</strong>的回复后，如果发现有<code>acceptedValue</code>返回，将所有回复的(acceptedProposal, acceptedValue)中最大的<code>acceptedProposal</code>对应的<code>acceptedValue</code>作为本次提案的value，如果<code>acceptedValue</code>为空，则可以任意决定本次提案的value；</p>
+<h3 id="accept阶段"><a href="#accept阶段" class="headerlink" title="accept阶段"></a>accept阶段</h3><p>​    <strong>Proposer</strong>  :  广播(N, value)给所有<strong>Acceptor</strong>节点</p>
+<p>​    <strong>Acceptor</strong> ： 比较N和当前的<code>minProposal</code>，如果N &gt;= <code>minProposal</code>，则更新<code>acceptedValue</code> = value，同时更新minProposal = N，返回 <code>minProposal</code>；如果N  &lt;  <code>minProposal</code>，返回 <code>minProposal</code></p>
+<p>​    <strong>Proposer</strong>  :  接收到大多数的<strong>Acceptor</strong>的回复后，如果发现<code>minProposal</code>大于当前提案编号N，提案有更新，提案失败，需要重新开始提案，否则，value达成一致，提案通过</p>
+<p>以下通过两个例子来更具体描述paxos的提案流程</p>
+<h3 id="实例1"><a href="#实例1" class="headerlink" title="实例1"></a>实例1</h3><p><img src="D:\workspace\03.blog\blog图片\image-20230206155448281.png" alt="image-20230206155448281"></p>
+<p>Proposer_1发起提案，提案编号为n</p>
+<p>Acceptor_1、Acceptor_2、Acceptor_3接收提案，之前没有接收过提案，更新minProposal为n</p>
+<p>Acceptor_1、Acceptor_2、Acceptor_3返回(null, null)</p>
+<p>Proposer_1接收到了大多数<strong>Acceptor</strong>的回复，查询是否存在acceptedValue，不存在则自己创建本次提案value</p>
+<p>Proposer_1发送accept请求(n, value)</p>
+<p>Acceptor_1、Acceptor_2、Acceptor_3接收accept请求，检查n &gt;= minProposal，更新minProposal = n，更新 </p>
+<p>acceptedValue = value，返回minProposal</p>
+<p>Proposer_1接收到大多数的Acceptor回复后，检查minProposal &lt;= n，提案通过</p>
+<h3 id="实例2"><a href="#实例2" class="headerlink" title="实例2"></a>实例2</h3><p><img src="D:\workspace\03.blog\blog图片\image-20230206155537480.png" alt="image-20230206155537480"></p>
+<p>Proposer_1发起提案，提案编号为n</p>
+<p>Acceptor_1、Acceptor_2接收提案，之前没有接收过提案，更新minProposal为n</p>
+<p>Acceptor_1、Acceptor_2返回(null, null)</p>
+<p>Proposer_1接收到了大多数<strong>Acceptor</strong>的回复，查询是否存在acceptedValue，不存在则自己创建本次提案value1</p>
+<p>​    </p>
+<p>Proposer_2发起提案，提案编号为n+1</p>
+<p>Acceptor_2判断minProposal &lt; n+1，更新minProposal=n+1, 并保证不会接收小于n+1的提案</p>
+<p>Acceptor_3接收提案，之前没有接收过提案，更新minProposal为n</p>
+<p>Acceptor_3、Acceptor_2返回(null, null)</p>
+<p>Proposer_1接收到了大多数<strong>Acceptor</strong>的回复，查询是否存在acceptedValue，不存在则自己创建本次提案value2</p>
+<p>Proposer_1发送accept请求(n, value1)</p>
+<p>Acceptor_1接收accept请求，检查n &gt;= minProposal，更新minProposal = n，更新 acceptedValue = value1，返回minProposal</p>
+<p>Acceptor_2接收accept请求，检查n &lt; minProposal，<strong>拒绝本次提案</strong>，返回minProposal</p>
+<p>Proposer_1接收到大多数的Acceptor回复后，检查minProposal &gt; n，提案失败，提案有更新，重新提案</p>
+<p>Proposer_2发送accept请求(n+1, value2)</p>
+<p>Acceptor_2接收accept请求，检查n &gt;= minProposal，更新minProposal = n+1，更新 acceptedValue = value2，返回minProposal</p>
+<p>Acceptor_3接收accept请求，检查n &gt;= minProposal，更新minProposal = n+1，更新 acceptedValue = value2，返回minProposal</p>
+<p>Proposer_2接收到大多数的Acceptor回复后，检查n &gt;= minProposal，提案通过</p>
+<p>Proposer_1重新发起提案，提案编号为n+2</p>
+<p>Acceptor_1判断minProposal &lt; n+2，更新minProposal=n+2, 并保证不会接收小于n+1的提案，同时返回(n, value1)</p>
+<p>Acceptor_2判断minProposal &lt; n+2，更新minProposal=n+2, 并保证不会接收小于n+1的提案，同时返回已经通过的提案(n+1, value2)</p>
+<p>Proposer_1接收到了大多数<strong>Acceptor</strong>的回复，查询存在acceptedValue，且n+1的提案较新，更新本次提案的value为value2</p>
+<p>Proposer_1发送accept请求(n+2, value2)</p>
+<p>Acceptor_2接收accept请求，检查n &gt;= minProposal，更新minProposal = n+2，更新 acceptedValue = value2，返回minProposal</p>
+<p>Acceptor_3接收accept请求，检查n &gt;= minProposal，更新minProposal = n+2，更新 acceptedValue = value2，返回minProposal</p>
+<p>Proposer_1接收到大多数的Acceptor回复后，检查n &gt;= minProposal，提案通过</p>
+<h3 id="缺点"><a href="#缺点" class="headerlink" title="缺点"></a>缺点</h3><p>paxos算法有如下缺点</p>
+<p>1）多个Proposer进行prepare成功，但是因accept请求失败，从而继续重新开始提案，导致集群永远无法达成一致，出现死循环，也就是所谓的活锁</p>
+<p>2） 每个提案至少需要经过两轮(prepare和accept)，如果有多个提案者，可能导致提案通过效率大大降低</p>
+<p>改进方案</p>
+<p>1）针对活锁问题，提案失败后，进行一定时间的等待，等待集群完成一个提案</p>
+<p>2） 针对提案效率低的问题，使用更强大的raft和multi-paxos算法</p>
+
       
     </div>
     <footer class="article-footer">
